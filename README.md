@@ -7,4 +7,5 @@ ESPHome configs for my devices (see corresponding directories):
 
 * **Came gates controller** - control Came gates with ESP.
 * **Polyphonic alarm** - make alarm with custom polyphonic tunes!
-* **Terrarium dimmer** - smart heater for terrarium using dimmer
+* **Terrarium dimmer** - smart heater and light for terrarium using dimmer and relay (better then relays only)
+* **Terrarium relay** - smart heater for terrarium using relays only
