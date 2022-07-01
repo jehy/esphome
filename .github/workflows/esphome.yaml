@@ -18,6 +18,9 @@ jobs:
     steps:
       - name: Checkout source code
         uses: actions/checkout@v2
+      - name: Copy sample settings
+        run: |
+          cp came-gates-controller/settings.sample.h came-gates-controller/settings.h
       - name: Build ESPHome firmware to verify configuration
         uses: esphome/build-action@v1.5.0
         with:
