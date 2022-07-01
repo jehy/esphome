@@ -1,0 +1,24 @@
+name: Build ESPHome
+
+on:
+  - push
+  - pull_request
+
+jobs:
+  ci:
+    name: Building ${{ matrix.file }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        file:
+          - came-gates-controller/came-gates-controller.yaml
+          - polyphonic-alarm/polyphonic-alarm.yaml
+          - terrarium-dimmer/terrarium-dimmer.yaml
+          - terrarium-relay/terrarium-relay.yaml
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v2
+      - name: Build ESPHome firmware to verify configuration
+        uses: esphome/build-action@v1.5.0
+        with:
+          yaml_file: ${{ matrix.file }}

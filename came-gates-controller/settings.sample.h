@@ -1,0 +1,8 @@
+#define GATES_CODE "110010110110111111101000"
+
+#if defined(ESP32)
+#define TRANSMITTER_PIN DAC1
+#endif
+#if defined(ESP8266)
+#define TRANSMITTER_PIN D2
+#endif

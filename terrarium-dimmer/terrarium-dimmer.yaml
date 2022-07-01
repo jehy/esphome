@@ -1,0 +1,82 @@
+esphome:
+  name: terrarium-dimmer
+       
+  on_loop:
+    then:
+      lambda: |-
+          static unsigned long lastUpdate = 0;
+          static unsigned int lastValue = 0;
+          static unsigned long timeWithoutUpdates = 0;
+          int now = millis()/1000;
+          float brightness;
+          id(light1).remote_values.as_brightness(&brightness);
+          int currentValue = (int)(brightness*100);
+          int iteration = 5; // every 5 sec
+          if((lastUpdate + iteration) > now){
+            return;
+          }
+          lastUpdate = now;
+          if(currentValue ==lastValue){
+            timeWithoutUpdates+=iteration;
+          }
+          else {
+            timeWithoutUpdates = 0;
+              lastValue = currentValue;
+          }
+          ESP_LOGD("ERM", "Brightness %f Last value : %d New value: %d Same value for: %lu s", brightness, lastValue, currentValue, timeWithoutUpdates);
+          if(currentValue == 0){
+            ESP_LOGD("ERM", "Dimmer on zero, nothing to change");
+            return;
+          }
+          if(timeWithoutUpdates> 1000*60*10){ // 10 min, safety measure
+            ESP_LOGD("ERM", "Turning off heat");
+            id(light1).turn_off();
+            timeWithoutUpdates = 0; // avoid confusion when HA turns on relay back
+          }
+          
+
+esp8266:
+  board: d1
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+
+ota:
+  password: "dummy-password"
+
+wifi:
+  ssid: "dummy"
+  password: "dummy-password"
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Terrarium-Dimmer"
+    password: "dummy-password"
+
+captive_portal:
+
+# Example configuration entry
+output:
+  - platform: ac_dimmer
+    id: dimmer1
+    gate_pin: D7
+    zero_cross_pin:
+      number: D6
+      mode:
+        input: true
+      inverted: yes
+
+light:
+  - platform: monochromatic
+    id: light1
+    output: dimmer1
+    name: Dimmerized Light
+
+switch:
+  - platform: gpio
+    pin: D5
+    name: Relay1
+    inverted: true

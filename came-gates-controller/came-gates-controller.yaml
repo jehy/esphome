@@ -1,0 +1,18 @@
+esphome:
+  name: came-gates-controller
+  includes:
+    - settings.h
+    - came-gates-controller.h
+
+switch:
+- platform: custom
+  lambda: |-
+    auto my_custom_switch = new GatesSwitch();
+    App.register_component(my_custom_switch);
+    return {my_custom_switch};
+
+  switches:
+    name: "Gates Switch"
+
+esp8266:
+  board: nodemcuv2
