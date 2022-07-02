@@ -1,7 +1,12 @@
 # Terrarium dimmer
 
 
-ESPHome config for terrarium dimmer and relay - relay provides light and dimmer provides heat.
+ESPHome config for terrarium dimmer and relay:
+
+* Relay, connected to Ultraviolet lamp, provides light
+* Dimmer, connected to heat lamp, provides heat.
+
+You can also use polyphonic alarm or telegram notifications to alarm if something went wrong (for example, heat lamp broke).
 
 ## How it works
 
