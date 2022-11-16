@@ -4,4 +4,7 @@ Open CAME gates using Arduino and 433 Mhz transmitter, based on [this sketch](ht
 
 You can obtain your gate's code using [this sketch](https://github.com/jehy/arduino-came-reader).
 
-Just copy `esphome/settings.sample.h` to `esphome/settings.h`, tweak it (provide gate code and transmitter pin) and you are ready for upload :) 
+## Installation:
+1. Extract `came-gates-controller.h`, `came-gates-controller.yaml` and `settings.sample.h` yo your ESPHome directory.
+2. Copy `settings.sample.h` to `settings.h` and tweak it (provide gate code and transmitter pin).
+3. Upload integration from esphome dashboard. 
