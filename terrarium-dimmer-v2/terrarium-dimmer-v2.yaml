@@ -1,0 +1,138 @@
+esphome:
+  name: "terrarium-dimmer-v2"
+
+esp8266:
+  board: d1
+
+# Enable logging
+logger:
+
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+external_components:
+  - source: github://jehy/dallasng
+
+
+dallasng:
+  - pin: D1
+    update_interval: 60s
+
+sensor:
+  - platform: dallasng
+    address: 0x903cf4e381aecd28
+    name: "Temperature1"
+    id: temperature1
+
+  - platform: dallasng
+    address: 0x843c92e381bebd28
+    name: "Temperature2"
+    id: temperature2
+
+  - platform: template
+    name: "Dimmer power"
+    id: dimmer_power_calculate
+    update_interval: 60s
+    accuracy_decimals: 0
+    unit_of_measurement: "%"
+    lambda: |-
+      auto goalTemp = id(is_day).state ? 26 : 24;
+      float temperatureDiff = goalTemp - std::max(id(temperature1).state, id(temperature2).state);
+      if(isnan(temperatureDiff)){
+        ESP_LOGD("DimmerLogic", "Temperature is not available");
+        return  NULL;
+      }
+      if(temperatureDiff> 1){
+        ESP_LOGD("DimmerLogic", "Need power to max");
+        return 100;
+      }
+      if(temperatureDiff<0){
+        ESP_LOGD("DimmerLogic", "Need power to zero");
+        return 0;
+      }
+      ESP_LOGD("DimmerLogic", "Need power %f", temperatureDiff*100.0);
+      return temperatureDiff*100.0;
+
+time:
+  - platform: sntp
+    id: sntp_time
+    timezone: "Europe/Moscow"
+    update_interval: 600s
+    on_time_sync:
+      then:
+        - logger.log: "Synchronized sntp clock"
+  - platform: homeassistant
+    id: hass_time
+    update_interval: 180s
+    timezone: "Europe/Moscow"
+    on_time_sync:
+      then:
+        - logger.log: "Synchronized homeassistant clock"
+
+binary_sensor:
+  - platform: template
+    name: "Day"
+    id: is_day
+    lambda: |-
+      auto hour_sntp = atoi(id(sntp_time).now().strftime("%H").c_str());
+      auto hour_hass = atoi(id(hass_time).now().strftime("%H").c_str());
+      return (hour_sntp >=5 && hour_sntp < 17) || (hour_hass >=5 && hour_hass < 17);
+
+
+switch:
+  - platform: gpio
+    pin: D5
+    name: Relay1
+    id: dayLight
+    inverted: true
+
+
+output:
+  - platform: ac_dimmer
+    id: dimmer1
+    gate_pin: D7
+    zero_cross_pin:
+      number: D6
+      mode:
+        input: true
+      inverted: yes
+
+light:
+  - platform: monochromatic
+    id: heatLight
+    output: dimmer1
+    name: Dimmerized Light
+
+
+interval:
+  - interval: 60sec
+    then:
+      lambda: |-
+          static int previousPower = 0;
+          static int badAttempts=0;
+          int power = id(dimmer_power_calculate).state;
+          if(power==NULL){
+            badAttempts++;
+            ESP_LOGD("DimmerLogic", "Power is null, so not changing. badAttempts: %d", badAttempts);
+            if(badAttempts<4){
+              return;
+            } else {
+                ESP_LOGD("DimmerLogic", "Too many bad attempts, resetting power");
+                power = 0;
+                badAttempts=0;
+            }
+          }
+          if(power!=previousPower){
+            previousPower=power;
+            ESP_LOGD("DimmerLogic", "Setting power to %d", power);
+            auto call = id(heatLight).turn_on();
+            call.set_brightness(power/100.0);
+            call.perform();
+          }
+          auto lampNeedState = id(is_day).state;
+          if(lampNeedState!=id(dayLight).state){
+          ESP_LOGD("ERM", "Changing relay state");
+            id(dayLight).toggle();
+          }
