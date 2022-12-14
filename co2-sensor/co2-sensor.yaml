@@ -1,0 +1,99 @@
+esphome:
+  name: co2
+
+esp8266:
+  board: d1
+
+# Enable logging
+logger:
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+# Example configuration entry
+
+uart:
+  rx_pin: D7
+  tx_pin: D6
+  baud_rate: 9600
+
+sensor:
+  - platform: mhz19
+    co2:
+      name: "MH-Z19 CO2 Value"
+      id: co2_mhz
+      unit_of_measurement: 'ppm'
+    temperature:
+      name: "MH-Z19 Temperature"
+      id: co2_temperature_mhz
+      unit_of_measurement: "°C"
+      device_class: "temperature"
+      state_class: "measurement"
+    update_interval: 60s
+    automatic_baseline_calibration: false
+
+
+  - platform: dht
+    pin: D5
+    temperature:
+      name: "Temperature"
+      id: co2_temperature_dht
+      unit_of_measurement: "°C"
+      device_class: "temperature"
+      state_class: "measurement"
+    humidity:
+      name: "Humidity"
+      id: co2_humidity_dht
+      unit_of_measurement: '%'
+      icon: "mdi:water-percent"
+    update_interval: 60s
+
+  - platform: wifi_signal # Reports the WiFi signal strength/RSSI in dB
+    name: "WiFi Signal dB"
+    internal: True
+    id: wifi_signal_db
+    update_interval: 60s
+    entity_category: "diagnostic"
+
+  - platform: copy # Reports the WiFi signal strength in %
+    source_id: wifi_signal_db
+    internal: True
+    name: "WiFi Signal Percent"
+    filters:
+      - lambda: return min(max(2.0 * (x + 100.0), 0.0), 100.0);
+    unit_of_measurement: "Signal %"
+    entity_category: "diagnostic"
+
+i2c:
+  sda: D4
+  scl: D3
+
+display:
+  - platform: lcd_pcf8574
+    id: co2_display
+    dimensions: 16x2
+    update_interval: 30s
+    address: 0x3F
+    lambda: |-
+          if(isnan(id(co2_mhz).state)){
+            it.print(0, 0, "Preparing...");
+            id(co2_display).backlight();
+            return;
+          }
+          auto co2 = (int)id(co2_mhz).state;
+          auto temp = (int)id(co2_temperature_dht).state;
+          auto hum = (int)id(co2_humidity_dht).state;
+          auto wifi = (int)id(wifi_signal_db).state;
+          auto display = id(co2_display);
+          it.printf(0, 0, "ppm=%d", co2);
+          it.printf(8, 0, "T=%d", temp);
+          it.printf(0, 1, "hum=%d%%", hum);
+          it.printf(8, 1, "WiFi=%d%%", min(max(2 * (wifi + 100), 0), 100));
+          ESP_LOGD("ERM", "co2 is %d", co2);
+          if(co2>1000){
+            id(co2_display).backlight();
+          }
+          else{
+            id(co2_display).no_backlight();
+          }
