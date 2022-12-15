@@ -7,6 +7,14 @@ esp8266:
 # Enable logging
 logger:
 
+# Enable Home Assistant API
+api:
+  encryption:
+    key: "xxx"
+
+ota:
+  password: "xxx"
+
 
 wifi:
   ssid: !secret wifi_ssid
@@ -21,6 +29,10 @@ dallasng:
     update_interval: 60s
 
 sensor:
+
+  - platform: uptime
+    name: Uptime Sensor
+
   - platform: dallasng
     address: 0x903cf4e381aecd28
     name: "Temperature1"
