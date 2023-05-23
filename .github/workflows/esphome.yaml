@@ -14,6 +14,9 @@ jobs:
           - came-gates-controller/came-gates-controller.yaml
           - polyphonic-alarm/polyphonic-alarm.yaml
           - terrarium-dimmer/terrarium-dimmer.yaml
+          - terrarium-dimmer-v2/terrarium-dimmer-v2.yaml
+          - terrarium-humidifier/terrarium-humidifier.yaml
+          - cricket-house/cricket-house.yaml
           - terrarium-relay/terrarium-relay.yaml
     steps:
       - name: Checkout source code
