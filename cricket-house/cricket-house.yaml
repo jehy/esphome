@@ -1,0 +1,152 @@
+ota:
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+esphome:
+  name: "cricket-house"
+esp32:
+  board: lolin_d32
+  framework:
+    type: arduino
+
+# Enable logging
+logger:
+
+sensor:
+
+  - platform: dht
+    pin: GPIO14
+    temperature:
+      name: "Temperature"
+      id: temperature_dht
+      unit_of_measurement: "°C"
+      device_class: "temperature"
+      state_class: "measurement"
+    humidity:
+      name: "Humidity"
+      id: humidity_dht
+      unit_of_measurement: '%'
+      icon: "mdi:water-percent"
+    update_interval: 60s
+
+  - platform: template
+    name: "Dimmer power"
+    id: dimmer_power_calculate
+    update_interval: 60s
+    accuracy_decimals: 0
+    unit_of_measurement: "%"
+    lambda: |-
+      auto goalTemp = id(is_day).state ? 28 : 25;
+      float temp = id(temperature_dht).state;
+      if((temp >= 31)){
+        ESP_LOGD("DimmerLogic", "temperature too high, turning off");
+        return  0;
+      }
+      float temperatureDiff = goalTemp - temp;
+      if(isnan(temperatureDiff)){
+        ESP_LOGD("DimmerLogic", "Temperature is not available");
+        return  -1;
+      }
+      if(temperatureDiff> 1){
+        ESP_LOGD("DimmerLogic", "Need power to max");
+        return 100;
+      }
+      if(temperatureDiff<0){
+        ESP_LOGD("DimmerLogic", "Need power to zero");
+        return 0;
+      }
+      ESP_LOGD("DimmerLogic", "Need power %f", temperatureDiff*100.0);
+      return temperatureDiff*100.0;
+
+binary_sensor:
+  - platform: template
+    name: "Day"
+    id: is_day
+    lambda: |-
+      auto hour_sntp = atoi(id(sntp_time).now().strftime("%H").c_str());
+      auto hour_hass = atoi(id(hass_time).now().strftime("%H").c_str());
+      return (hour_sntp >=5 && hour_sntp < 17) || (hour_hass >=5 && hour_hass < 17);
+
+time:
+  - platform: sntp
+    id: sntp_time
+    timezone: "Europe/Moscow"
+    update_interval: 600s
+    on_time_sync:
+      then:
+        - logger.log: "Synchronized sntp clock"
+  - platform: homeassistant
+    id: hass_time
+    update_interval: 180s
+    timezone: "Europe/Moscow"
+    on_time_sync:
+      then:
+        - logger.log: "Synchronized homeassistant clock"
+    on_time:
+      - cron: '0 0 * * * *'
+        then:
+          - switch.turn_on: Fan
+      - cron: '0 10 * * * *'
+        then:
+          - switch.turn_off: Fan
+
+light:
+  - platform: monochromatic
+    id: heatLight
+    output: dimmer1
+    name: Dimmerized Light
+    restore_mode: ALWAYS_OFF
+
+output:
+  - platform: ac_dimmer
+    id: dimmer1
+    gate_pin: GPIO25
+    zero_cross_pin:
+      number: GPIO26
+      mode:
+        input: true
+      inverted: yes
+api:
+
+interval:
+  - interval: 60sec
+    then:
+      lambda: |-
+          static int previousPower = 0;
+          static int badAttempts=0;
+          int power = id(dimmer_power_calculate).state;
+          if(power==-1){
+            badAttempts++;
+            ESP_LOGD("DimmerLogic", "Power is -1, so not changing. badAttempts: %d", badAttempts);
+            if(badAttempts<4){
+              return;
+            } else {
+                ESP_LOGD("DimmerLogic", "Too many bad attempts, resetting power");
+                power = 0;
+                badAttempts=0;
+            }
+          }
+          if(power!=previousPower){
+            previousPower=power;
+            ESP_LOGD("DimmerLogic", "Setting power to %d", power);
+            if(power>0){
+              auto call = id(heatLight).turn_on();
+              call.set_brightness(power/100.0);
+              call.perform();
+            }
+            else {
+              auto call = id(heatLight).turn_off();
+              call.perform();
+            }
+          }
+          //id(Fan).toggle();
+
+
+switch:
+  - platform: gpio
+    pin: GPIO27
+    name: Fan
+    id: Fan
+    restore_mode: ALWAYS_OFF
