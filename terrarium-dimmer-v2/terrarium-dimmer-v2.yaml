@@ -7,19 +7,12 @@ esp8266:
 # Enable logging
 logger:
 
-# Enable Home Assistant API
-api:
-  encryption:
-    key: "xxx"
-
-ota:
-  password: "xxx"
-
 
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
 
+#captive_portal:
 external_components:
   - source: github://jehy/dallasng
 
@@ -50,11 +43,17 @@ sensor:
     accuracy_decimals: 0
     unit_of_measurement: "%"
     lambda: |-
-      auto goalTemp = id(is_day).state ? 26 : 24;
-      float temperatureDiff = goalTemp - std::max(id(temperature1).state, id(temperature2).state);
+      auto goalTemp = id(is_day).state ? 29 : 25;
+      float minTemp = std::min(id(temperature1).state, id(temperature2).state);
+      float maxTemp = std::max(id(temperature1).state, id(temperature2).state);
+      if((maxTemp >= 31) || (minTemp>=31)){
+        ESP_LOGD("DimmerLogic", "Max temperature too high, turning off");
+        return  0;
+      }
+      float temperatureDiff = goalTemp - maxTemp;
       if(isnan(temperatureDiff)){
         ESP_LOGD("DimmerLogic", "Temperature is not available");
-        return  NULL;
+        return  -1;
       }
       if(temperatureDiff> 1){
         ESP_LOGD("DimmerLogic", "Need power to max");
@@ -125,9 +124,9 @@ interval:
           static int previousPower = 0;
           static int badAttempts=0;
           int power = id(dimmer_power_calculate).state;
-          if(power==NULL){
+          if(power==-1){
             badAttempts++;
-            ESP_LOGD("DimmerLogic", "Power is null, so not changing. badAttempts: %d", badAttempts);
+            ESP_LOGD("DimmerLogic", "Power is -1, so not changing. badAttempts: %d", badAttempts);
             if(badAttempts<4){
               return;
             } else {
@@ -139,9 +138,16 @@ interval:
           if(power!=previousPower){
             previousPower=power;
             ESP_LOGD("DimmerLogic", "Setting power to %d", power);
-            auto call = id(heatLight).turn_on();
-            call.set_brightness(power/100.0);
-            call.perform();
+            if(power>0)
+            {
+              auto call = id(heatLight).turn_on();
+              call.set_brightness(power/100.0);
+              call.perform();
+            } else {
+              auto call = id(heatLight).turn_off();
+              call.perform();
+            }
+            
           }
           auto lampNeedState = id(is_day).state;
           if(lampNeedState!=id(dayLight).state){
