@@ -18,6 +18,7 @@ jobs:
           - terrarium-humidifier/terrarium-humidifier.yaml
           - cricket-house/cricket-house.yaml
           - terrarium-relay/terrarium-relay.yaml
+          - co2-sensor/co2-sensor.yaml
     steps:
       - name: Checkout source code
         uses: actions/checkout@v2

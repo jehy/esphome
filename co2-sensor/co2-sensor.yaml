@@ -4,6 +4,9 @@ esphome:
 esp8266:
   board: d1
 
+# Enable Home Assistant API
+api:
+
 # Enable logging
 logger:
 
