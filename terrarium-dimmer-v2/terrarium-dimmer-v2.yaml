@@ -16,7 +16,7 @@ wifi:
 
 #captive_portal:
 external_components:
-  - source: github://jehy/dallasng
+  - source: github://nrandell/dallasng
 
 
 dallasng:
