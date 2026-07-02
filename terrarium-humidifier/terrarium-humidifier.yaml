@@ -9,7 +9,9 @@ esp8266:
 # Enable Home Assistant API
 api:
 
+
 ota:
+  - platform: esphome
 
 sensor:
   - platform: uptime

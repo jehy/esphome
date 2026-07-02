@@ -1,3 +1,6 @@
+ota:
+  - platform: esphome
+
 esphome:
   name: "terrarium-dimmer-v2"
 

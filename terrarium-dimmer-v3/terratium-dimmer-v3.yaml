@@ -1,0 +1,284 @@
+esphome:
+  name: terrarium-v3
+  friendly_name: terrarium-v3
+  on_boot:
+    priority: -100.0
+    then:
+      - delay: 2s
+      - lambda: |-
+            id(heatLight).turn_off();
+            id(dayLight).turn_off();
+            id(humidifier).turn_off();
+
+esp32:
+  board: nodemcu-32s
+  framework:
+    type: arduino
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+  encryption:
+
+ota:
+  - platform: esphome
+# Example configuration entry for ESP32
+
+debug:
+  update_interval: 5s
+
+i2c:
+  - sda: GPIO18
+    scl: GPIO19
+    scan: true
+    id: bus_1
+    frequency: 800kHz
+    timeout: 10ms
+    setup_priority: 700
+  - sda: GPIO22
+    scl: GPIO21
+    scan: true
+    id: bus_2
+    frequency: 800kHz
+    timeout: 10ms
+    setup_priority: 700
+
+text_sensor:
+  - platform: debug
+    device:
+      name: "Device Info"
+    reset_reason:
+      name: "Reset Reason"
+      
+
+sensor:
+#  - platform: debug
+#    free:
+#      name: "Heap Free"
+#    block:
+#      name: "Heap Max Block"
+#    loop_time:
+#      name: "Loop Time"
+  - platform: uptime
+    name: Uptime Sensor
+  - platform: sht4x
+    temperature:
+      name: "Temperature1"
+      id: temperature1
+    humidity:
+      name: "Relative Humidity1"
+      id: humidity1
+    update_interval: 60s
+    i2c_id: bus_1
+
+  - platform: sht4x
+    temperature:
+      name: "Temperature2"
+      id: temperature2
+    humidity:
+      name: "Relative Humidity2"
+      id: humidity2
+    update_interval: 60s
+    i2c_id: bus_2
+
+  - platform: template
+    name: "Dimmer power"
+    id: dimmer_power_calculate
+    update_interval: 60s # heating lamp is slow and inertial so we need to wait until changes apply
+    accuracy_decimals: 0
+    unit_of_measurement: "%"
+    lambda: |-
+      if (isnan(id(temperature1).state)) {
+          ESP_LOGD("main", "temperature1 Sensor value is NaN (unknown), sending error");
+          return  -1;
+        }
+      if (isnan(id(temperature2).state)) {
+          ESP_LOGD("main", "temperature2 Sensor value is NaN (unknown), sending error");
+          return  -1;
+        }
+      static int intervalCounter = 0;
+      auto relalculateIntervalRaise = 5; // 5 min, change power every relalculateInterval * update_interval seconds
+      auto relalculateIntervalReduce = 3; // change power every relalculateInterval * update_interval seconds
+      static int power = 0; // start with zero power, store it into static var which is saved between executions
+      auto powerStep = 5;
+      auto powerMax = 70; // more is dangerous with current lamp
+      intervalCounter++;
+      auto goalTemp = id(is_day).state ? 28 : 24;
+      ESP_LOGD("DimmerLogic", "Goal temperature is %d", goalTemp);
+      int maxTemerature = 30;
+      float minTemp = std::min(id(temperature1).state, id(temperature2).state);
+      float maxTemp = std::max(id(temperature1).state, id(temperature2).state);
+      if(maxTemp>=maxTemerature){ // safety measure
+        ESP_LOGD("DimmerLogic", "temperature too high, turning heater off");
+        return  0;
+      }
+      float temperatureDiff = goalTemp - maxTemp;
+      ESP_LOGD("DimmerLogic", "Temperature diff: %f", temperatureDiff);
+      if(temperatureDiff<-1 && (power>0) && ((power-powerStep)>0)){ // temperature too high
+        if(intervalCounter<relalculateIntervalReduce){
+          ESP_LOGD("DimmerLogic", "Too early to reduce power, interval %d, skipping", intervalCounter);
+        }
+        else {
+          power -= powerStep;
+          ESP_LOGD("DimmerLogic", "Need less power: %d", power);
+          intervalCounter=0;
+          return power;
+        }
+      }
+      if(temperatureDiff>1 &&((power+powerStep)<100) && ((power+powerStep) < powerMax)){ // temperature too low
+        if(intervalCounter<relalculateIntervalRaise){
+          ESP_LOGD("DimmerLogic", "Too early to raise power, interval %d, skipping", intervalCounter);
+        }
+        else {
+          power += powerStep;
+          ESP_LOGD("DimmerLogic", "Adding more power: %d", power);
+          intervalCounter=0;
+          return power;
+        }
+      }
+      ESP_LOGD("DimmerLogic", "power is enough: %d", power);
+      return power; //current value is fine
+
+time:
+  - platform: homeassistant
+    id: hass_time
+    update_interval: 180s
+    timezone: "Europe/Moscow"
+    on_time_sync:
+      then:
+        - logger.log: "Synchronized homeassistant clock"
+  - platform: sntp
+    id: sntp_time
+    timezone: "Europe/Moscow"
+    update_interval: 600s
+    on_time_sync:
+      then:
+        - logger.log: "Synchronized sntp clock"
+
+    on_time:
+
+      # Cron syntax, trigger every x minutes 0 seconds
+      - cron: '0 /5 * * * *'
+        then:
+          lambda: |-
+            if (isnan(id(humidity1).state)) {
+                ESP_LOGD("main", "humidity1 Sensor value is NaN (unknown)");
+                return;
+              }
+            if (isnan(id(humidity2).state)) {
+                ESP_LOGD("main", "humidity1 Sensor value is NaN (unknown)");
+                return;
+              }
+            float maxHumidity = std::min(id(humidity1).state, id(humidity2).state);
+            if(maxHumidity<40){
+              ESP_LOGD("HumidityLogic", "humidity is low: %f", maxHumidity);
+              id(humidifier).turn_on();
+            } else {
+                ESP_LOGD("HumidityLogic", "humidity is enough: %f", maxHumidity);
+              }
+      - cron: '15 /5 * * * *' # and then turn off every minute after y seconds passed
+        then:
+          lambda: |-
+              id(humidifier).turn_off();
+
+binary_sensor:
+  - platform: template
+    name: "Day"
+    id: is_day
+    lambda: |-
+      auto hour_sntp = atoi(id(sntp_time).now().strftime("%H").c_str());
+      auto hour_hass = atoi(id(hass_time).now().strftime("%H").c_str());
+      return (hour_sntp >=5 && hour_sntp < 17) || (hour_hass >=5 && hour_hass < 17);
+
+switch:
+  - platform: gpio
+    pin: GPIO32
+    name: dayLight
+    id: dayLight
+    inverted: true
+
+  - platform: gpio
+    name: humidifier
+    id: humidifier
+    pin:
+      number: GPIO26
+      inverted: false
+
+output:
+  - platform: ac_dimmer
+    id: dimmer1
+    gate_pin: GPIO13
+    zero_cross_pin:
+      number: GPIO14
+      mode:
+        input: true
+      inverted: yes
+
+light:
+  - platform: monochromatic
+    id: heatLight
+    output: dimmer1
+    name: Dimmerized Light
+
+web_server:
+  port: 80
+  
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+
+interval:
+  - interval: 30sec
+    then:
+      lambda: |-
+          static int previousPower = 0;
+          static int badAttempts=0;
+          int power = id(dimmer_power_calculate).state;
+          if(power<-1 || power>255){
+                ESP_LOGD("DimmerChange", "wrong power value, looks like startup");
+                return;
+          }
+          if(power==-1){
+            badAttempts++;
+            auto attemptsLeft = 6-badAttempts;
+            ESP_LOGD("DimmerChange", "Power is -1, so not changing. Retries before resetting power to zero: %d", attemptsLeft);
+            if(attemptsLeft>0){
+              return;
+            } else {
+                ESP_LOGD("DimmerChange", "Too many bad power checks, resetting power to zero");
+                power = 0;
+                badAttempts=0;
+            }
+          }
+          badAttempts=0;
+          if(power ==previousPower)
+          {
+            return;
+          }
+          ESP_LOGD("DimmerChange", "Previous power was %d, setting power to %d",previousPower, power);
+          previousPower=power;
+          if(power>0)
+          {
+            id(heatLight).turn_on().set_brightness(power/100.0).set_transition_length(5000).perform();
+          } else {
+            id(heatLight).turn_off().perform();
+          } 
+        
+  - interval: 60sec
+    then:
+      lambda: |-
+          auto lampNeedState = id(is_day).state;
+          if(lampNeedState!=id(dayLight).state){
+            ESP_LOGD("ERM", "Changing daylight relay state");
+            id(dayLight).toggle();
+          }
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  #ap:
+  #  ssid: "Terrarium-V3 Fallback Hotspot"
+  #  password: "hWDNxO4RzDkI"
+
+#captive_portal:
+    

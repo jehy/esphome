@@ -1,3 +1,7 @@
+
+ota:
+  - platform: esphome
+
 esphome:
   name: terratium-relay
 
