@@ -1,18 +1,33 @@
 esphome:
   name: came-gates-controller
-  includes:
-    - settings.h
-    - came-gates-controller.h
 
-switch:
-- platform: custom
-  lambda: |-
-    auto my_custom_switch = new GatesSwitch();
-    App.register_component(my_custom_switch);
-    return {my_custom_switch};
-
-  switches:
-    name: "Gates Switch"
+external_components:
+  - source:
+      type: git
+      url: http://github.com/jehy/esphome-came-gates
+      ref: master
+      path: components
+    components:
+      - came_gates_controller
 
 esp8266:
   board: nodemcuv2
+
+# Enable logging
+logger:
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+api:
+
+ota:
+  - platform: esphome
+
+switch:
+  - platform: came_gates_controller
+    name: "Gates Switch"
+    pin: D2
+    code: "110010110110111111100100"
+    shipments: 6
